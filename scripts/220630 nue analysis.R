@@ -50,11 +50,8 @@ rm(list=ls())
   dt[is.na(sd_nue), sd_nue := cv_nue_mean * 1.25 * nue_value]
 
   # add random noise to sd_nue in order that the correlation between nue_value and sd_nue is acceptable
-  
-vec <- as.vector(rnorm(3483, 1, 2))
-cbind(dt,vec)
-dt[,sd_nue := sd_nue + vec]
-
+set.seed(123)
+dt[,sd_nue := sd_nue + rnorm(.N,mean = 1, sd = 2)]
 
 #dt[is.na(sd_nue), sd_nue1 := cv_nue_mean * abs(rnorm(1, 1.25, 0.5))] #added an random rnorm instead of 1.25
 #dt[is.na(sd_nue), sd_nue := sd_nue1 * nue_value]
