@@ -11,6 +11,7 @@ require(metafor);require(data.table);
   # Database with literature data from selected studies
   dt <- fread('data/220818 database.csv',dec=',')
   dt[dt==""] = NA_real_
+  dt[dt=="NA"] = NA_real_
     
   # remove columns 'title' and 'paper' from data table
   dt[,c('title','paper' ) := NULL]
@@ -57,6 +58,9 @@ require(metafor);require(data.table);
   dt[final, mn_temp := i.mn_temp, on = .(obs_no)]
   dt[final, prec_mn := i.prec_mn, on = .(obs_no)]
   dt[final, xsom := i.xsom, on = .(obs_no)]
+  
+  # remove data points without lat lon information
+  dt <- dt[!is.na(x) | !is.na(y),]
   
   # change column type from character to numeric
   dt[, ph := as.numeric(ph)]
@@ -108,6 +112,13 @@ require(metafor);require(data.table);
   
   # N dose environmental NUE
   dt[, n_dose_env := fifelse(is.na(n_dose_env), (n_appl + n_up_unfert), n_dose_env)]
+  
+  # remove soil covariates in data from Luncheng so that they can be replaced with converted isric data 
+  dt[no == 34, c("som","total_n","clay","ph") := NA ]
+  dt <-dt[!is.na(n_appl),]
+  
+  # remove total_n in data from Schutz so that it can be replaced with isric data (since units of total_n differ per study and are not traceable)  
+  dt[no == 27, total_n := NA ]
   
   # replace NAs for 4R & site conditions with unknown, median or data from soilgrids.org or CRU 
   dt[, n_timing1 := fifelse(is.na(n_timing1), "unknown", n_timing1)]
@@ -185,8 +196,8 @@ require(metafor);require(data.table);
   # create columns for placement
   dt[grepl('injected|sub|deep',n_place),nplacegroup := 'injected'] 
   dt[grepl('band',n_place),nplacegroup := 'bandsprayed']
-  dt[grepl('broadcast|broadcasted|basal|topdressing|surface',n_place),nplacegroup := 'broadcasted'] 
-  dt[grepl('unknown', n_place) | is.na(n_place), nplacegroup := 'unknown'] 
+  dt[grepl('broadcast|broadcasted|basal|topdress|surface',n_place),nplacegroup := 'broadcasted'] 
+  dt[grepl('unknown', n_place), nplacegroup := 'unknown'] 
   
 # create groups for soil and climate variables 
  
@@ -195,7 +206,7 @@ require(metafor);require(data.table);
   dt[grepl('silt-loam|silt',texture),gtexture := 'silty']
   dt[grepl('sandy-loam|loamy-sand|sand',texture),gtexture := 'sandy']
   dt[grepl('clay|sandy-clay|silty-clay',texture),gtexture := 'clayey']
-  dt[, gtexture := fifelse(is.na(gtexture), 'unknown|NA', gtexture)] 
+  dt[, gtexture := fifelse(is.na(gtexture), 'unknown', gtexture)] 
   
   # group soil organic matter content
   dt[, gsom := cut(som, c(-Inf,50,Inf))]
@@ -273,29 +284,30 @@ require(metafor);require(data.table);
  
   # remove dt
   rm(dt,dt1,dt2,dt2_es,dt2A,es,final)
-  
-  
-  # #test correlation between site factors to see whether they are (non-)independent (Viechtbauer, 2020; Harrer et al, 2021)
-  # cols <- colnames(dt3_es[ , .SD, .SDcols = is.numeric])
-  # 
-  # # create a data table with data to be tested
-  # test_corr_sf <- subset(dt3_es, select=c(cols))
-  # 
-  # # use cor.mat function to create a correlation matrix in order to test correlation between site factors
-  # cor.mat <- round(cor(test_corr_sf),2)
-  # # create a correlogram 
-  # corrplot::corrplot(cor.mat, type="upper", order="FPC") 
-  # # retrieve values between 
-  # cor.mat[cor.mat>0.6 & cor.mat<1.0]
-  # # retrieve values between 
-  # cor.mat[cor.mat<(-0.6) & cor.mat>(-1.0)]
-  # 
-  # # remove dt
-  # rm(test_corr_sf)
 
-  # make selections of data for either NUE_env or NUE_agr 
+  # select data for either NUE_env or NUE_agr 
   dt3_es_env <- dt3_es[!is.na(es_env)|ind_type == "NUEenv" | ind_type == "nueenv",]
   dt3_es_agr <- dt3_es[ind_type == "NUEagr" | ind_type == "nueagr",]
+  
+  # data normalization and removal of outliers for nue agronomic
+  dt3_es_agr[, n_appl := log(n_appl)]
+  dt3_es_agr[, som := log(som)] #2 groups, probably due to ph (mean ph is 6.6 vs 7.2)
+  dt3_es_agr[, p_dose := log(p_dose)]
+  dt3_es_agr[, total_n := log(total_n)]
+  dt3_es_agr[, k_dose := log(k_dose)]
+  dt3_es_agr[, clay := log(clay)]
+  dt3_es_agr[, pot_eva := log(pot_eva)]
+  dt3_es_agr <- dt3_es_agr[!(ph <= 4),]
+  
+  # data normalization and removal of outliers for nue environmental
+  dt3_es_env[, n_appl := log(n_appl)]
+  dt3_es_env[, som := log(som)] #2 groups, probably due to ph (mean ph is 6.3 vs 7.6)
+  dt3_es_env[, p_dose := log(p_dose)]
+  dt3_es_env[, xcec := log(xcec)]
+  dt3_es_env[, total_n := log(total_n)]
+  dt3_es_env[, k_dose := log(k_dose)]
+  dt3_es_env[, mn_prec := log(mn_prec)]
+  dt3_es_env <- dt3_es_env[!(ph <= 4),]
   
   
   ## meta models
@@ -356,9 +368,9 @@ require(metafor);require(data.table);
   
   # create vector with main numerical factors
   cols <- c('n_appl',
-            'xcec',  
+            'xcec', 'som','total_n','k_dose',
             'pot_eva', 'mn_temp', 'mn_prec', 'clay', 
-            'tot_prec_crop_gr','p_dose','ph') 
+            'p_dose','ph') 
   
 
   # create output list with stats from moderator models of each factor (output summary of each model) for NUE agr
@@ -403,7 +415,7 @@ require(metafor);require(data.table);
   # model development NUE agronomic
   
   # model with moderators
-  modelA1 = rma.mv(nue_value,nue_var,mods=~n_appl+xcec+som+total_n+factor(nsourcegroup)+factor(n_timing1_group)+(som*xcec),random=~1| no,data=dt3_es_agr, method="ML", sparse = TRUE)
+  modelA1 = rma.mv(nue_value,nue_var,mods=~n_appl+xcec*som+total_n,random=~1| no,data=dt3_es_agr, method="ML", sparse = TRUE)
   # check whether model A1 is a better fit than model C1
   anova(modelC1, modelA1)
   # percentage variance explained:
@@ -415,7 +427,7 @@ require(metafor);require(data.table);
   # model with moderators: nappl, xcec, nsourcegroup, nplacegroup, n_timing1_group, 
   modelE1 = rma.mv(es_env,env_var,mods=~n_appl+xcec+factor(nsourcegroup)+factor(nplacegroup)+factor(n_timing1_group),random=~1| no,data=dt3_es_env, method="ML", sparse = TRUE)
   # check whether model E1 is a better fit than model G1
-  anova(model, modelE1)
+  anova(modelG1, modelE1)
   # percentage variance explained:
   evp_E1 = 100*(1-modelA1$QE/modelG1$QE)  
   
@@ -430,4 +442,5 @@ require(metafor);require(data.table);
   # qqnorm(rstandard.rma.mv(modelE1))
   qqnorm(residuals.rma(modelE1), main= "(b) NUEenv")
   qqline(residuals.rma(modelE1)) 
+  
   
