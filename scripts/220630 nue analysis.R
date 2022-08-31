@@ -301,8 +301,10 @@ require(metafor);require(data.table);
   ## meta models
   
   # model without moderator for NUEagr
+  a = Sys.time()
   modelC1=rma.mv(nue_value,nue_var, random=~1|no,data=dt3_es_agr, method="ML", sparse = TRUE)
-
+  Sys.time()-a
+  
   # ML meta-models for main factor analysis with paper as ML component for NUEagr
   
   # create vector with main factors
