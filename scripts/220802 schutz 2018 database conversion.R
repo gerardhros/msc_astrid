@@ -11,13 +11,20 @@ require(readxl);require(metafor);require(data.table);require(patchwork);require(
 
 
 # import data set 
-schutz.dt <- as.data.table(read_excel("C:/Astrid/NUE/Extend database/Meta-analyses/Schütz et al. (2018)/Schütz et al. (2018).xlsx"))
+schutz.dt <- as.data.table(readxl::read_excel("dev/schutz_2018_original.xlsx"))
 
 # make column headings easier to read/refer
 setnames(schutz.dt,tolower(colnames(schutz.dt)))
-setnames(schutz.dt,gsub('\\(|\\)|\\/','', gsub(' ','_',colnames(schutz.dt))))
+setnames(schutz.dt,gsub('\\(|\\)|\\/|\\=|_|\\%|\\+','', gsub(' ','_',colnames(schutz.dt))))
 
-# make data table with N-contents after Bouwman, Van Drecht & Van der Hoek (2004) table 3
+schutz.dt[schutz.dt=='NA'] <- NA
+
+# what are numeric columns
+cols <- c('om','ceccmolckg','totalnkghamerged','nappliedkgha','kappliedkgha','pappliedkgha',
+          'nuentot','sdnuentot','yielddrykgha','sddry','sd')
+schutz.dt[,c(cols) := lapply(.SD,as.numeric),.SDcols = cols]
+
+# make data table with N-contents (g / kg) after Bouwman, Van Drecht & Van der Hoek (2004) table 3
 ncontents <- data.table(crop_group = c("wheat","paddy rice","maize","barley","millet","sorghum","other cereals","potatoes","sweet potatoes","cassava",
                                        "other root crops","plantains","sugar beets","sugar cane","pulses,total","vegetables and melons","bananas",
                                        "citrus fruit","fruit excluding melons","cocoa beans","rapeseed","oil palm fruit","soybeans","groundnuts in shell",
@@ -64,15 +71,21 @@ ncontents <- data.table(crop_group = c("wheat","paddy rice","maize","barley","mi
   schutz.dt[, ncontent:= fifelse(grepl("fenugreek",crop), ncontents[grepl("vegetables and melons",crop_group), nc], ncontent)] 
   
   # calculate N uptake in kg/ha
-  schutz.dt[, nup := ncontent * yield_dry_kgha / 1000]
+  schutz.dt[, nup := ncontent * yieldfreshkgha / 1000]
+  
+  # ratio dry versus moist
+  schutz.dt[,dmratio := yieldfreshkgha/yielddrykgha]
+  schutz.dt[is.na(sd),sd:= sddry * dmratio]
   
   # calculate the sd of the N uptake in kg/ha
-  schutz.dt[, sd_nup := ncontent * sd_dry /1000]
+  schutz.dt[, sd_nup := ncontent * sd /1000]
 
   # make column heading easier to read/refer and set class to numeric
-  setnames(schutz.dt,"total_n_input_-_mineral_+_organic","ndose_tot")
+  setnames(schutz.dt,"totalninput-mineralorganic","ndose_tot")
   schutz.dt[, ndose_tot := as.numeric(ndose_tot)]
  
+  # update total N input when missing
+  schutz.dt[is.na(ndose_tot) & !is.na(nappliedkgha), ndose_tot := nappliedkgha]
 
 # estimate the agronomic nitrogen use efficiency (NUEagr)
   
@@ -83,24 +96,27 @@ ncontents <- data.table(crop_group = c("wheat","paddy rice","maize","barley","mi
   # select nuptake for each row
   # minus the nuptake that corresponds with the lowest N dose within the study (and crop type) 
   # divided by the difference in N dose in the row with the lowest N dose within the study (and crop type)
-  schutz.dt <- schutz.dt[, nueagr := ((nup - mean(nup[ndose_tot == min(ndose_tot)])) / (ndose_tot - min(ndose_tot)))*100, by = .(study,crop)]
+  setnames(schutz.dt,"first,second,thirdorforthyeardata0123",'exp_year')
+  setnames(schutz.dt,"nfixing0,psolubilizing1,both2,unclear3,sorksolubilizer4,amf5",'exp_type')
+  schutz.dt[,uid := .GRP, by = .(study,crop,exp_year,exp_type,location,strain)]
+  schutz.dt[, nueagr := ((nup - mean(nup[ndose_tot == min(ndose_tot)])) / (ndose_tot - min(ndose_tot)))*100, by = 'uid']
   
 # estimate the environmental nitrogen use efficiency (NUEenv)
   
   # calculate nue env ((N uptake/dose) * 100)
-  schutz.dt <- schutz.dt[, nueenv := ((nup/ndose_tot)*100)]
+  schutz.dt[, nueenv := ((nup/ndose_tot)*100)]
   
 # reshape data table in order to merge into the database
   
   # melt nue_agr and nue_env into the same column 
-  schutz.dt <- melt(schutz.dt, id.vars = c("study","year","country","latitude","longitude","soil_texture","om_%","ph_water","cec_cmolckg",
-                                      "available_n_kgha_merged","total_n_kgha_merged","0-30cm_topsoil_sampling_yesno","application","n_source","k_applied_kgha",
-                                      "p_applied_kgha","type_of_fertilization","replicates","crop","ndose_tot","sd_nup"),
+  schutz.dt <- melt(schutz.dt, id.vars = c("study","year","country","latitude","longitude","soiltexture","om","phwater","ceccmolckg",
+                                      "availablenkghamerged","totalnkghamerged","0-30cmtopsoilsamplingyesno","application","nsource","kappliedkgha",
+                                      "pappliedkgha","typeoffertilization","replicates","crop","ndose_tot","sd_nup","uid"),
                                measure.vars = c("nueagr","nueenv"), variable.name = "ind_type", value.name = c("nue_value"))
   
   # rename column names
-  setnames(schutz.dt,c("crop","longitude","latitude","soil_texture","om_%","ph_water","0-30cm_topsoil_sampling_yesno", "cec_cmolckg","available_n_kgha_merged",
-                       "total_n_kgha_merged","k_applied_kgha","p_applied_kgha","ndose_tot","replicates","study"),
+  setnames(schutz.dt,c("crop","longitude","latitude","soiltexture","om","phwater","0-30cmtopsoilsamplingyesno", "ceccmolckg","availablenkghamerged",
+                       "totalnkghamerged","kappliedkgha","pappliedkgha","ndose_tot","replicates","study"),
                      c("crop_type","x","y","texture","som","ph", "depth","xcec","n_av_soil",
                        "total_n","k_dose","p_dose","n_appl","n_rep_t","paper"))
 
@@ -113,10 +129,10 @@ ncontents <- data.table(crop_group = c("wheat","paddy rice","maize","barley","mi
 # estimate the standard of the nue values
   
   # calculate sd of nueagr based on the sd of the nup 
-  schutz.dt <- schutz.dt[ind_type == "nueagr", sd_nue := ((sd_nup - mean(sd_nup[n_appl == min(n_appl)])) / (n_appl - min(n_appl)))*100, by = .(paper,crop_type)]
+  schutz.dt[ind_type == "nueagr", sd_nue := ((sd_nup - mean(sd_nup[n_appl == min(n_appl)])) / (n_appl - min(n_appl)))*100, by = 'uid']
   
   # calculate sd of nueenv based on the sd of the nup
-  schutz.dt <- schutz.dt[ind_type == "nueenv", sd_nue := ((sd_nup/n_appl)*100)]
+  schutz.dt[ind_type == "nueenv", sd_nue := ((sd_nup/n_appl)*100)]
   
 # remove unreliable and infinite datapoints  
   
