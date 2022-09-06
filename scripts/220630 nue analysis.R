@@ -1,28 +1,20 @@
 # meta analysis for global upscaling
 
 # clear environment and require packages
-require(metafor);require(data.table);
+require(metafor);require(data.table)
 
 # clear environment
-#rm(list=ls())
+rm(list=ls())
 
 # read in data and start cleaning data
 
   # Database with literature data from selected studies
-  dt <- fread('data/220818 database.csv',dec=',')
+  dt <- fread('data/220906 all sites with covariates.csv')
   dt[dt==""] = NA_real_
   dt[dt=="NA"] = NA_real_
     
-  # remove columns 'title' and 'paper' from data table
-  dt[,c('title','paper' ) := NULL]
-
   # make column headings easier to read/refer
   setnames(dt,tolower(colnames(dt)))
-  setnames(dt,gsub('\\(|\\)|\\/','', gsub(' ','_',colnames(dt))))
-  
-  # easy solution to replace wrong column types from read_excel
-  cols <- which(sapply(dt,is.logical))
-  dt[,c(cols):= lapply(.SD,as.numeric),.SDcols = cols]
 
   #remove datapoints with agronomic and environmental NUE larger than 90 and smaller than 0
   dt <- dt[!(nue_value>90 | nue_value <= 0),]
@@ -290,14 +282,13 @@ require(metafor);require(data.table);
   dt3_es_agr <- dt3_es[ind_type == "NUEagr" | ind_type == "nueagr",]
   
   # data normalization and removal of outliers for nue agronomic
-  dt3_es_agr[, n_appl := log(n_appl)]
-  dt3_es_agr[, som := log(som)] #2 groups, probably due to ph (mean ph is 6.6 vs 7.2)
-  dt3_es_agr[, p_dose := log(p_dose)]
-  dt3_es_agr[, total_n := log(total_n)]
-  dt3_es_agr[, k_dose := log(k_dose)]
-  dt3_es_agr[, clay := log(clay)]
-  dt3_es_agr[, pot_eva := log(pot_eva)]
-  dt3_es_agr <- dt3_es_agr[!(ph <= 4),]
+  dt3_es_agr[n_appl != 0, n_appl := log(n_appl)]
+  dt3_es_agr[som != 0, som := log(som)] #2 groups, probably due to ph (mean ph is 6.6 vs 7.2)
+  dt3_es_agr[p_dose!=0, p_dose := log(p_dose)]
+  dt3_es_agr[total_n != 0, total_n := log(total_n)]
+  dt3_es_agr[k_dose != 0, k_dose := log(k_dose)]
+  dt3_es_agr[clay != 0, clay := log(clay)]
+  dt3_es_agr[pot_eva !=0, pot_eva := log(pot_eva)]
   
   # data normalization and removal of outliers for nue environmental
   dt3_es_env[, n_appl := log(n_appl)]
@@ -306,15 +297,38 @@ require(metafor);require(data.table);
   dt3_es_env[, xcec := log(xcec)]
   dt3_es_env[, total_n := log(total_n)]
   dt3_es_env[, k_dose := log(k_dose)]
+ 
+  
   dt3_es_env[, mn_prec := log(mn_prec)]
   dt3_es_env <- dt3_es_env[!(ph <= 4),]
   
+  # update crop groups
+  nsim
+  dt3_es_agr[grepl('maize|corn',crop_type), crop_type := 'maize']
+  dt3_es_agr[grepl('paddy|rice',crop_type), crop_type := 'rice']
+  dt3_es_agr[grepl('wheat|millet|cereal|barley',crop_type), crop_type := 'cereal']
+  dt3_es_agr[!grepl('maize|rice|cereal',crop_type), crop_type := 'other']
+  boxplot(dt3_es_agr$nue_value~dt3_es_agr$crop_type)
+  boxplot(dt3_es_agr$nue_value~dt3_es_agr$gclay,main = 'effect clay',xlab = 'group',ylab='nue')
+  boxplot(dt3_es_agr$nue_value~dt3_es_agr$gmn_prec,main = 'effect climate (precipitation)',xlab = 'group',ylab='nue')
+  boxplot(dt3_es_agr$nue_value~dt3_es_agr$gmn_temp,main = 'effect climate (temperature)',xlab = 'group',ylab='nue')
+  boxplot(dt3_es_agr$nue_value~dt3_es_agr$gtexture,main = 'effect texture',xlab = 'group',ylab='nue')
+  boxplot(dt3_es_agr$nue_value~dt3_es_agr$pdose2,main = 'effect P dose class',xlab = 'group',ylab='nue')
+  
+  summary(lm(dt3_es_agr$nue_value~dt3_es_agr$n_appl))
+  
+  # make spatial map
+  mp <- dt[,.(x,y,obs_no)]
+  mp.sf <- sf::st_as_sf(mp,coords = c('x','y'),crs = 4326)
   
   ## meta models
+  dt3_es_agr
+  
   
   # model without moderator for NUEagr
+  sel <- sample(1:nrow(dt3_es_agr),500)
   a = Sys.time()
-  modelC1=rma.mv(nue_value,nue_var, random=~1|no,data=dt3_es_agr, method="ML", sparse = TRUE)
+  modelC1=rma.mv(nue_value,nue_var, random= list(~1|no),data=dt3_es_agr[sel,], method="ML", sparse = TRUE)
   Sys.time()-a
   
   # ML meta-models for main factor analysis with paper as ML component for NUEagr
@@ -330,14 +344,15 @@ require(metafor);require(data.table);
   
   for(i in 1:length(cols)){
     
-    mod <- rma.mv(nue_value,nue_var,mods=~factor(get(cols[i]))-1,random=~1| no,data=dt3_es_agr, method="ML", sparse = TRUE) 
+    mod <- rma.mv(nue_value,nue_var,mods=~factor(get(cols[i]))-1,random=list(~1| no),
+                  data=dt3_es_agr[sel,], method="ML", sparse = TRUE) 
     modtest <- anova(mod,modelC1)
     
     out_C <- data.table(parm = cols[i],
                         AIC = mod$fit.stats$ML[3],
                         pdif = round(modtest$pval,4)) 
     out.list_C[[i]] <- copy(out_C)
-    print[i]
+    print(i)
   }
   
   out_C <- rbindlist(out.list_C)
@@ -380,13 +395,17 @@ require(metafor);require(data.table);
   
   for(i in 1:length(cols)){
     
-    mod <- rma.mv(nue_value,nue_var,mods=~(get(cols[i])),random=~1| no,data=dt3_es_agr, method="ML", sparse = TRUE) 
-    modtest <- anova(mod,modelC1)
+    mod <- rma.mv(nue_value,nue_var,mods=~(get(cols[i])),random=list(~1| no),
+                  data=dt3_es_agr[sel,], method="ML", sparse = TRUE) 
+    #modtest <- anova(mod,modelC1)
     
     out_E <- data.table(parm = cols[i],
                         AIC = mod$fit.stats$ML[3],
-                        pdif = round(modtest$pval,4)) 
+                        mean = as.numeric(mod$b[2,]),
+                        se = as.numeric(mod$se[2]),
+                        pval = mod$pval[2]) 
     out.list_E[[i]] <- copy(out_E)
+    print(i)
   }
   
   out_E <- rbindlist(out.list_E)
