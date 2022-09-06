@@ -3,34 +3,20 @@ library(terra);library(data.table);library(sf);
 library(stringr);library(foreign);library(mapview);
 
 # load data
-lonlat <- fread("dev/test_nieuwe_covariates2.csv")
-as.data.table(lonlat)
-
-# convert comma's to dots
-lonlat[, x:= gsub(",", ".", gsub("\\.", "", x))]
-lonlat[, y:= gsub(",", ".", gsub("\\.", "", y))]
-
-# transform from DSC to dec
-lon <- parse_lon(lonlat$x)
-lat<- parse_lat(lonlat$y)
-
-# create data table 
-lon <- as.vector(lon)
-lat <- as.vector(lat)
-d1 <- data.table(y = lat, x = lon, obs_no = lonlat$obs_no)
+d1 <- fread("dev/220905 all sites without covariates.csv")
 
 # assign unique ID to each row
-d1[, ID := (1:nrow(d1))]
+d1[, ID := .GRP,by=c('studynr','x','y')]
 
 # remove observations without X Y data from d1
-d2 <- d1[!is.na(y) & !is.na(x),]
+d2 <- unique(d1[,.(ID,x,y)])
 
 # convert to spatial object
-s1 <- st_as_sf(d2,coords = c('x','y'),crs = 4326)
-s1 <- vect(s1)
+s1 <- sf::st_as_sf(d2,coords = c('x','y'),crs = 4326)
+s1 <- terra::vect(s1)
 
 # read in dbf file for metzger climatic regions
-s2 <- foreign::read.dbf('C:/Astrid/NUE/NUE/data/dataNUE/03 metzger/GenS_v3.dbf')
+s2 <- foreign::read.dbf('D:/DATA/03 metzger/GenS_v3.dbf')
 
 # what rasters are available
 # downloaded via QGIS for ISRIC, 0.5 degrees resolution, https://maps.isric.org/
@@ -38,9 +24,11 @@ s2 <- foreign::read.dbf('C:/Astrid/NUE/NUE/data/dataNUE/03 metzger/GenS_v3.dbf')
 # downloaded via https://datashare.ed.ac.uk/handle/10283/3089
 
 # read in the rasters via hard drive
-r1 <- list.files('C:/Astrid/NUE/NUE/data/dataNUE/01 soil',pattern = 'tif|nc',full.names = T)
-r2 <- list.files('C:/Astrid/NUE/NUE/data/dataNUE/02 climate',pattern = 'tif|nc',full.names = T)
-r3 <- list.files('C:/Astrid/NUE/NUE/data/dataNUE/03 metzger',pattern = 'tif|nc',full.names = T)
+r1 <- list.files('D:/DATA/01 soil',pattern = 'tif|nc',full.names = T)
+r1 <- r1[!grepl('stack',r1)]
+r2 <- list.files('D:/DATA/02 climate',pattern = 'tif|nc',full.names = T)
+r3 <- list.files('D:/DATA/03 metzger',pattern = 'tif|nc',full.names = T)
+r4 <- list.files('D:/DATA/09 depositie',pattern = 'tif|nc',full.names = T)
 
 # read in the raster files and convert to spatrasters
 isric <- sds(r1)
@@ -48,11 +36,12 @@ climate <- sds(r2)
 metzger <- rast(r3)
 isric <- rast(isric)
 climate <- rast(climate)
+ndep <- rast(r4)
 
 # --- extract isric data ----
 
 # update names of isric raster to avoid duplication in names
-names(isric) <- str_split_fixed(names(isric),"_isric_",2)[,2]
+names(isric) <- stringr::str_split_fixed(names(isric),"_isric_",2)[,2]
 
 # extract data for the spatial objects
 d1.isric <- terra::extract(x = isric, y = s1)
@@ -86,9 +75,9 @@ c1.isric <- melt(c1.isric,id = 'ID',
 c1.isric[,variable := sort(names(isric))[as.integer(variable)]]
 c1.isric[,value := as.numeric(or)]
 c1.isric[or < 1 & e1 > 1,value := e1]
-c1.isric[or < 1 & e2 > 1,value := e2]
-c1.isric[or < 1 & e3 > 1,value := e3]
-c1.isric[or < 1 & e4 > 1,value := e4]
+c1.isric[value < 1 & or < 1 & e2 > 1,value := e2]
+c1.isric[value < 1 & or < 1 & e3 > 1,value := e3]
+c1.isric[value < 1 & or < 1 & e4 > 1,value := e4]
 
 c2.isric <- dcast(c1.isric,ID~variable, value.var = 'value')
 
@@ -140,16 +129,21 @@ c2.metzger <- merge(d1.metzger,s2.dt,by.x = 'gens_v3', by.y = 'GEnS_seq')
 # subset
 c2.metzger <- c2.metzger[,.(ID,GEnZname,GEnZ,GEnS)]
 
-# rename columns
-dt <- d2[,.(obs_no,lon = x,lat = y)]
+# --- extract depositie data -----
+d1.dep <- terra::extract(x = ndep, y = s1)
 
-# reassign unique ID to each row
-dt[, ID := (1:nrow(dt))]
+# convert units from mg N /m2 to kg N /ha for year 2010
+c2.dep <- as.data.table(d1.dep)
+c2.dep <- c2.dep[,.(ID,depntot = depntot * 0.01)]
+
+# rename columns
+dt <- copy(d1)
 
 # merge the data files
-dt <- merge(dt,c2.isric, by='ID')
-dt <- merge(dt,c2.climate, by='ID')
-#dt <- merge(dt,c2.metzger, by='ID')
+dt <- merge(dt,c2.isric, by='ID',all.x = TRUE)
+dt <- merge(dt,c2.climate, by='ID',all.x = TRUE)
+dt <- merge(dt,c2.metzger, by='ID',all.x = TRUE)
+dt <- merge(dt,c2.dep,by='ID',all.x=TRUE)
 
 # save the file
 #fwrite(dt,'dev/covariates_schutz2018.csv', dec=',', sep=';')
@@ -160,39 +154,39 @@ dt <- merge(dt,c2.climate, by='ID')
 # average ISRIC values for 0-5 cm, 5-15 cm and 15-30 cm over 0-30 cm
 dt[, XCEC := ((cec_mean_0_5 + cec_mean_5_15*2 + cec_mean_15_30*3)/6)]
 dt[, XCLAY := ((clay_mean_0_5 + clay_mean_5_15*2 + clay_mean_15_30*3)/6)] 
-dt[, xnit := ((ntot_mean_0_5 + ntot_mean_5_15*2 + ntot_mean_15_30*3)/6)]  
+dt[, XNTOT := ((ntot_mean_0_5 + ntot_mean_5_15*2 + ntot_mean_15_30*3)/6)]  
 dt[, XPH := ((phw_mean_0_5 + phw_mean_5_15*2 + phw_mean_15_30*3)/6)]  
 dt[, XSAND := ((sand_mean_0_5 + sand_mean_5_15*2 + sand_mean_15_30*3)/6)]   
 dt[, XSILT := ((silt_mean_0_5 + silt_mean_5_15*2 + silt_mean_15_30*3)/6)] 
 dt[, XSOC := ((soc_mean_0_5 + soc_mean_5_15*2 + soc_mean_15_30*3)/6)] 
-dt[, xsom := (XSOC*2)]
+dt[, XSOM := (XSOC*2)]
 
 # rename climate columns
 setnames(dt,"pet_mean","pot_eva")
-setnames(dt,"tmp_mean","mn_temp")  
-setnames(dt,"pre_mean","prec_mn") 
+
 
 # convert covariables to the right units
 dt[, pot_eva := pot_eva*365] # convert from mm/d to mm/y
-dt[, prec_mn := prec_mn*12] # convert from mm/month to mm/y
+dt[, pre_mean := pre_mean*12] # convert from mm/month to mm/y
 dt[, XCLAY := XCLAY/10] # convert from gkg to %
 dt[, XSILT := XSILT/10] # convert from gkg to %
 dt[, XSAND := XSAND/10] # convert from gkg to %
-dt[, xnit := xnit/100] # convert from cg/kg to g/kg
+dt[, XNTOT := XNTOT/100] # convert from cg/kg to g/kg
 dt[, XPH := XPH/10] # convert from pHx10 to pH
 dt[, XSOC := XSOC/10 ] # convert from dg/kg to g/kg 
-dt[, xsom := xsom/10 ] # convert from dg/kg to g/kg 
+dt[, XSOM := XSOM/10 ] # convert from dg/kg to g/kg 
 
-# extract columns to be used
-final <- dt[,.(obs_no,lon,lat,XCEC,xnit,XPH,XSOC,XSAND,XSILT,XCLAY,pot_eva,mn_temp,prec_mn,xsom)]
+# columns to remove
+cols <- colnames(dt)[grepl('mean_',colnames(dt))]
+dt[, c(cols) := NULL]
 
-# round values and set names to lower
-cols <- colnames(final[,!c("obs_no")])
-final[, c(cols) := round(.SD,2), .SDcols = cols] 
-setnames(final,tolower(colnames(final)))
+# remove empty spaces
+dt[dt==''] <- NA
+
+setnames(dt,tolower(colnames(dt)))
 
 # save the file  
-fwrite(final,'dev/covariates_data266-451.base.csv', dec=',', sep=';')
+fwrite(dt,'data/220906 all sites with covariates.csv')
 
 
 
