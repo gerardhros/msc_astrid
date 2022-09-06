@@ -106,41 +106,104 @@ ncontents <- data.table(crop_group = c("wheat","paddy rice","maize","barley","mi
   # calculate nue env ((N uptake/dose) * 100)
   schutz.dt[, nueenv := ((nup/ndose_tot)*100)]
   
-# reshape data table in order to merge into the database
+  # calculate sd of nueagr based on the sd of the nup 
+  schutz.dt[,v1 := sd_nup / sqrt(replicates)]
+  schutz.dt[, sd_nue_agr := (sqrt(v1^2 + mean(v1[ndose_tot == min(ndose_tot)])^2) * 100 * sqrt(replicates)/ (ndose_tot - min(ndose_tot))), by = 'uid']
   
-  # melt nue_agr and nue_env into the same column 
-  schutz.dt <- melt(schutz.dt, id.vars = c("study","year","country","latitude","longitude","soiltexture","om","phwater","ceccmolckg",
-                                      "availablenkghamerged","totalnkghamerged","0-30cmtopsoilsamplingyesno","application","nsource","kappliedkgha",
-                                      "pappliedkgha","typeoffertilization","replicates","crop","ndose_tot","sd_nup","uid"),
-                               measure.vars = c("nueagr","nueenv"), variable.name = "ind_type", value.name = c("nue_value"))
+  # calculate sd of nueenv based on the sd of the nup
+  schutz.dt[, sd_nue_env := ((sd_nup/ndose_tot)*100)]
   
   # rename column names
   setnames(schutz.dt,c("crop","longitude","latitude","soiltexture","om","phwater","0-30cmtopsoilsamplingyesno", "ceccmolckg","availablenkghamerged",
                        "totalnkghamerged","kappliedkgha","pappliedkgha","ndose_tot","replicates","study"),
-                     c("crop_type","x","y","texture","som","ph", "depth","xcec","n_av_soil",
-                       "total_n","k_dose","p_dose","n_appl","n_rep_t","paper"))
-
+           c("crop_type","x","y","texture","som","ph", "depth","xcec","n_av_soil",
+             "total_n","k_dose","p_dose","n_appl","n_rep_t","paper"))
+  
   # convert "yes" into depth of 0-30 cm 
   schutz.dt[, depth := fifelse(depth == "yes", "0-30", depth)]
+  
+  # replace infinite with NA
+  schutz.dt[!is.finite(nueenv), nueenv := NA_real_]
+  schutz.dt[!is.finite(nueagr), nueagr := NA_real_]
+  schutz.dt[!is.finite(sd_nue_agr), sd_nue_agr := NA_real_]
+  schutz.dt[!is.finite(sd_nue_env), sd_nue_env := NA_real_]
+  
+  # convert ntot from kg/ha to g/kg
+  schutz.dt[,bd := as.numeric(bulkdensitymergedkgdm3)]
+  schutz.dt[is.na(bd),bd := mean(schutz.dt$bd,na.rm=T)]
+  schutz.dt[,depth2 := tstrsplit(depth,'-',keep=2)]
+  schutz.dt[,depth2 := as.numeric(depth2)]
+  schutz.dt[is.na(depth2),depth2 := 30]
+  schutz.dt[,total_n := total_n * 1000 / (depth2 * 0.01 * 100 * 100 * bd * 1000)]
+  
+# select columns to be stored
+  schutz.dt <- schutz.dt[,.(studynr,x,y,uid,year,nrep = n_rep_t,crop_type,country,
+                            n_fert_min = nappliedkgha,
+                            n_fert_man = nutrientcontentorganicamendmentnkgha,
+                            nsource,
+                            texture,depth,som,ph,ntot = total_n,
+                            bd,
+                            k_dose,p_dose,n_dose = n_appl, 
+                            typeoffertilization,yieldfreshkgha, ncontent,nup,sd_nup,nueagr,sd_nue_agr,nueenv,sd_nue_env)]
   
   # add column with study no 27
   schutz.dt[, no := 27]
   
+# set lon-lat correct
+  
+  # remove missing coordinates
+  schutz.dt<- schutz.dt[!is.na(x)]
+  
+  # convert comma's to dots
+  schutz.dt[, x:= parse_lon(x)]
+  schutz.dt[, y:= parse_lat(y)]
+  
+# rbind NUE-agri en NUE-env
+  
+  schutz.dt.agri <- copy(schutz.dt)[,c('nueenv', 'sd_nue_env') := NULL][,ind_type := 'NUEagr']
+  schutz.dt.agri <- schutz.dt.agri[!is.na(nueagr)]
+  schutz.dt.agri[,ind_unit := '%']
+  setnames(schutz.dt.agri,c('nueagr','sd_nue_agr'),c('nue_value','sd_nue'))
+  schutz.dt.agri[,se_nue := sd_nue / sqrt(nrep)]
+  
+  schutz.dt.env <- copy(schutz.dt)[,c('nueagr', 'sd_nue_agr') := NULL][,ind_type := 'NUEenv']
+  schutz.dt.env <- schutz.dt.env[!is.na(nueenv)]
+  schutz.dt.env[,ind_unit := '%']
+  setnames(schutz.dt.env,c('nueenv','sd_nue_env'),c('nue_value','sd_nue'))
+  schutz.dt.env[,se_nue := sd_nue / sqrt(nrep)]
+  
+  schutz.dt <- rbind(schutz.dt.agri,schutz.dt.env)
+  
+# write the lon-lat as csv
+  fwrite(schutz.dt,'dev/220905 schutz_sites.csv')
+  
+  
+  
+# # reshape data table in order to merge into the database
+#   
+#   # melt nue_agr and nue_env into the same column 
+#   schutz.dt <- melt(schutz.dt, id.vars = c("study","year","country","latitude","longitude","soiltexture","om","phwater","ceccmolckg",
+#                                       "availablenkghamerged","totalnkghamerged","0-30cmtopsoilsamplingyesno","application","nsource","kappliedkgha",
+#                                       "pappliedkgha","typeoffertilization","replicates","crop","ndose_tot","sd_nup","uid"),
+#                                measure.vars = c("nueagr","nueenv"), variable.name = "ind_type", value.name = c("nue_value"))
+#   
+ 
+  
+
 # estimate the standard of the nue values
   
-  # calculate sd of nueagr based on the sd of the nup 
-  schutz.dt[ind_type == "nueagr", sd_nue := ((sd_nup - mean(sd_nup[n_appl == min(n_appl)])) / (n_appl - min(n_appl)))*100, by = 'uid']
+    
+
   
-  # calculate sd of nueenv based on the sd of the nup
-  schutz.dt[ind_type == "nueenv", sd_nue := ((sd_nup/n_appl)*100)]
+  
   
 # remove unreliable and infinite datapoints  
   
   # remove datapoints with nue values that are infinite (since these are the rows used to determine the control uptake)
-  schutz.dt <- schutz.dt[!is.infinite(nue_value),]
+  # schutz.dt <- schutz.dt[!is.infinite(nue_value),]
  
   # remove datapoints with nueagr or nueenv smaller than 0 and larger than 90
-  schutz.dt <- schutz.dt[!(nue_value <= 0| nue_value > 90),]
+  # schutz.dt <- schutz.dt[!(nue_value <= 0| nue_value > 90),]
   
   # set datapoints larger than 90 to a value between 90 and 95
   #set.seed(111)
