@@ -13,183 +13,72 @@ rm(list=ls())
   dt[dt==""] = NA_real_
   dt[dt=="NA"] = NA_real_
     
-  # make column headings easier to read/refer
-  setnames(dt,tolower(colnames(dt)))
-
-  #remove datapoints with agronomic and environmental NUE larger than 90 and smaller than 0
-  dt <- dt[!(nue_value>90 | nue_value <= 0),]
+  # update NUE given deposition and NLV
+  dt[,cn := xsoc / xntot]
+  dt[is.na(cn),cn := median(dt$cn,na.rm=T)]
+  dt[,cn := pmin(quantile(cn,0.95),pmax(quantile(cn,0.05),cn))]
+  dt[,bd := 100 / ((xsoc * 0.1 * 1.72) / 0.244 + (100 - xsoc * 0.1 * 1.72)/1.64)]
+  dt[,nlv := 0.025 * (xsoc * 0.1 / cn) * (100 * 100 * 0.3) * (1000 * bd) * 0.001]
+  dt[,depntot := pmax(quantile(depntot,0.05),depntot)]
+  dt[,n_dose := pmax(1,n_dose,na.rm=T)]
+  dt[,fnue := nue_value * n_dose / (n_dose + nlv + depntot)]
+  dt[,fvnue := (sd_nue * n_dose / (n_dose + nlv + depntot))^2]
   
-  # remove data from database source 27, and replace with converted data source 27
-  dt <- dt[no != "27", ]
-  dt1 <- fread("dev/schutz2018_converted.csv")
-  dt <- rbind(dt,dt1, use.names = TRUE, fill = TRUE)
+  # replace missing ones with median
+  dt[is.na(p_dose), p_dose := median(dt$p_dose,na.rm=T)]
+  dt[is.na(k_dose), k_dose := median(dt$k_dose,na.rm=T)]
+  dt[is.na(pot_eva), pot_eva := median(dt$pot_eva,na.rm=T)]
+  dt[is.na(pet_sd), pet_sd := median(dt$pet_sd,na.rm=T)]
+  dt[is.na(tmp_sd), tmp_sd := median(dt$tmp_sd,na.rm=T)]
+  dt[is.na(tmp_mean), tmp_mean := median(dt$tmp_mean,na.rm=T)]
   
-  # delete some columns
-  dt[, c("V1","sd_nup") := NULL]
-
-  # add observation numbers (452-2714) for database source 27 (this means there will be no numbers 2715-2919 in the database) and set row order
-  dt[no == "27", obs_no := 452:2714]
-  setorder(dt,obs_no,no)
+  # transform or cutoff relevant variables
+  dt[,n_dose := pmin(n_dose,quantile(n_dose,0.99))]
+  dt[,p_dose := pmin(p_dose,quantile(p_dose,0.99))]
+  dt[,k_dose := pmin(k_dose,quantile(k_dose,0.99))]
   
-  # read in covariates from Schutz et al. (2018)
-  final <- fread('dev/covariates_schutz2018_formerge.csv')
-  final[, obs_no := 452:2714]
-  final[, id := NULL]
+  # create new data table with relevant columns
+  dt2 <- copy(dt)
   
-  # merge into the total database
-  dt[final, x := i.x, on = .(obs_no)]
-  dt[final, y := i.y, on = .(obs_no)]
-  dt[final, xcec := i.xcec, on = .(obs_no)]
-  dt[final, xnit := i.xnit, on = .(obs_no)]
-  dt[final, xph := i.xph, on = .(obs_no)]
-  dt[final, xsoc := i.xsoc, on = .(obs_no)]
-  dt[final, xsand := i.xsand, on = .(obs_no)]
-  dt[final, xsilt := i.xsilt, on = .(obs_no)]
-  dt[final, xclay := i.xclay, on = .(obs_no)]
-  dt[final, pot_eva := i.pot_eva, on = .(obs_no)]
-  dt[final, mn_temp := i.mn_temp, on = .(obs_no)]
-  dt[final, prec_mn := i.prec_mn, on = .(obs_no)]
-  dt[final, xsom := i.xsom, on = .(obs_no)]
+  # adjust a few exceptional variance estimates (visible by plotting var~value)
+  dt2[fnue <= 150,fvnue := pmin(500,pmin(4 * fnue,fvnue))]
+  dt2[fnue > 150,fvnue := pmin(500,pmin(9 * fnue,fvnue))]
+ 
+  # investigate influence of factors
+  boxplot(dt2$fnue~dt2$n_place,main = 'effect of placement', ylab='NUE (%)',xlab = '')
+  boxplot(dt2$fnue~dt2$n_source,main = 'effect of N source', ylab='NUE (%)',xlab = '')
+  boxplot(dt2$fnue~dt2$n_time_splits,main = 'effect of N timing', ylab='NUE (%)',xlab = '')
+  boxplot(dt2$fnue~dt2$crop_type,main = 'effect of crop type', ylab='NUE (%)',xlab = '')
+  boxplot(dt2$fnue~dt2$texture,main = 'effect of soiltype', ylab='NUE (%)',xlab = '')
+  plot(dt2$fnue~dt2$n_dose,main = 'effect of N dose', ylab='NUE (%)',xlab = '')
+  plot(dt2$fnue~dt2$xclay,main = 'effect of clay content', ylab='NUE (%)',xlab = '')
+  plot(dt2$fnue~dt2$xph,main = 'effect of pH', ylab='NUE (%)',xlab = '')
+  plot(dt2$fnue~dt2$xntot,main = 'effect of total N', ylab='NUE (%)',xlab = '')
+  plot(dt2$fnue~dt2$depntot,main = 'effect of N deposition', ylab='NUE (%)',xlab = '')
+  plot(dt2$fnue~dt2$pre_mean,main = 'effect of precipitation', ylab='NUE (%)',xlab = '')
   
-  # remove data points without lat lon information
-  dt <- dt[!is.na(x) | !is.na(y),]
   
-  # change column type from character to numeric
-  dt[, ph := as.numeric(ph)]
-  dt[, som := as.numeric(som)]
-  dt[, n_av_soil := as.numeric(n_av_soil)]
-  dt[, k_dose := as.numeric(k_dose)]
-  dt[, total_n := as.numeric(total_n)]
-  dt[, xcec := as.numeric(xcec)]
+  # baseline model
+  a = Sys.time()
+  mC1=rma.mv(nue_value,nue_var, random= list(~1|studynr),data=dt2, method="ML", sparse = TRUE)
+ Sys.time()-1
+ 
+  # test first main glm models
+  m1 = lm(fnue ~ n_place + n_source + n_time_splits + crop_type + n_dose : I(n_dose^2) + xclay*pre_mean + xsom*tmp_mean, data = dt2)
+ 
+  p1 <- predict(m1,newdata = dt2)
+  plot(p1,dt2$fnue)
   
-  # calculate new and adjust existing data 
-
-    # estimate n_rep_t when not available
-    dt[, n_rep_t := fifelse(is.na(n_rep_t),2,n_rep_t)]
-    dt[, n_rep_c := fifelse(is.na(n_rep_c),2,n_rep_c)]
-
-  # calculate stats from LSD, sd and se for NUE
-  dt[is.na(se_nue), se_nue := lsd_nue / ((qt(0.975, n_rep_t))*sqrt(2*n_rep_t))]
-  dt[is.na(sd_nue), sd_nue := se_nue*sqrt(n_rep_t)] 
-
-  # estimate sd from mean CV of other studies for NUE
-  dt[, cv_nue := sd_nue / nue_value]
-  dt[, cv_nue_mean := mean(cv_nue,na.rm = TRUE)]
-  dt[is.na(sd_nue), sd_nue := cv_nue_mean * 1.25 * nue_value]
-
-  # add random noise to sd_nue in order that the correlation between nue_value and sd_nue is acceptable
-  set.seed(123)
-  dt[,sd_nue := sd_nue + rnorm(.N,mean = 1, sd = 2)]
-
-  # calculate stats for fertilized plot
-  dt[, se_fertup := fifelse(is.na(se_fertup), lsd_fertup / ((qt(0.975, n_rep_t))*sqrt(2*n_rep_t)), se_fertup)]
-  dt[, sd_fertup := fifelse(!is.na(se_fertup), se_fertup*sqrt(n_rep_t), sd_fertup)]
-  dt[, cv_fertup := sd_fertup / n_up_fert]
-  dt[, cv_fertup_mean := mean(cv_fertup,na.rm = TRUE)]
-  dt[is.na(sd_fertup), sd_fertup := cv_fertup_mean * 1.25 * n_up_fert]
+  # model with moderators
+  modelA1 = rma.mv(fnue,fvnue,mods=~n_place + n_source + n_time_splits + crop_type + n_dose + I(n_dose^2) + p_dose + k_dose + 
+                     tmp_mean + pre_mean + pot_eva + depntot + xntot + xclay + bd,random=~1| no,data=dt2, method="ML", sparse = TRUE)
   
-  # calculate stats for unfertilized plot
-  dt[, se_unfertup := fifelse(is.na(se_unfertup), lsd_unfertup / ((qt(0.975, n_rep_t))*sqrt(2*n_rep_t)), se_unfertup)]
-  dt[, sd_unfertup := fifelse(!is.na(se_unfertup), se_unfertup*sqrt(n_rep_t), sd_unfertup)]
-  dt[, cv_unfertup := sd_unfertup / n_up_unfert]
-  dt[, cv_unfertup_mean := mean(cv_unfertup,na.rm = TRUE)]
-  dt[is.na(sd_unfertup), sd_unfertup := cv_unfertup_mean * 1.25 * n_up_unfert]
+  # check whether model A1 is a better fit than model C1
+  anova(modelC1, modelA1)
+  # percentage variance explained:
+  evp_A1 = 100*(1-modelA1$QE/modelC1$QE)  
   
-  # replace unknown fertilization with zero
-  # which of the columns need to be checked
-  cols <- c('n_fert_min','n_fert_man','n_fix','n_dep_image','n_dep_emep','n_cs','n_spm','n_min','n_hc','n_res')
   
-  # replace NA with zero
-  dt[,c(cols) := lapply(.SD,function(x) fifelse(is.na(x),0,x)), .SDcols = cols]
-  
-  # N dose environmental NUE
-  dt[, n_dose_env := fifelse(is.na(n_dose_env), (n_appl + n_up_unfert), n_dose_env)]
-  
-  # remove soil covariates in data from Luncheng so that they can be replaced with converted isric data 
-  dt[no == 34, c("som","total_n","clay","ph") := NA ]
-  dt <-dt[!is.na(n_appl),]
-  
-  # remove total_n in data from Schutz so that it can be replaced with isric data (since units of total_n differ per study and are not traceable)  
-  dt[no == 27, total_n := NA ]
-  
-  # replace NAs for 4R & site conditions with unknown, median or data from soilgrids.org or CRU 
-  dt[, n_timing1 := fifelse(is.na(n_timing1), "unknown", n_timing1)]
-  dt[, n_timing2 := fifelse(is.na(n_timing2), "unknown", n_timing2)]
-  dt[, n_timing3 := fifelse(is.na(n_timing3), "unknown", n_timing3)]
-  dt[, n_source := fifelse(is.na(n_source), "unknown", n_source)]
-  dt[, n_place := fifelse(is.na(n_place), "unknown", n_place)]
-  dt[, n_place_depth := fifelse(is.na(n_place_depth), median(n_place_depth, na.rm= TRUE), n_place_depth)]
-  dt[, texture := fifelse(is.na(texture), "unknown", texture)]
-  dt[, som := fifelse(is.na(som), xsoc*2, som)]
-  dt[, ph := fifelse(is.na(ph), xph, ph)]
-  dt[, clay := fifelse(is.na(clay), xclay, clay)]
-  dt[, caco3 := fifelse(is.na(caco3), median(caco3, na.rm= TRUE), caco3)]
-  dt[, n_av_soil := fifelse(is.na(n_av_soil), median(n_av_soil, na.rm= TRUE), n_av_soil)]
-  dt[, total_n := fifelse(is.na(total_n), xnit, total_n)]
-  dt[, p_dose := fifelse(is.na(p_dose), median(p_dose, na.rm= TRUE), p_dose)]
-  dt[, k_dose := fifelse(is.na(k_dose), median(k_dose, na.rm= TRUE), k_dose)]
-  dt[, mn_prec := fifelse(is.na(mn_prec), prec_mn, mn_prec)]
-  dt[, tot_prec_crop_gr := fifelse(is.na(tot_prec_crop_gr), median(tot_prec_crop_gr, na.rm= TRUE), tot_prec_crop_gr)]
-  
-# create groups for 4R management principles
-  
-  # create new column with N rate groups
-  dt[, nrategroup := cut(n_appl, c(-Inf,100,200,Inf))] 
-  
-  # create new column with N source groups
-  # find the plus sign in a string, MF stands for mineral fertilizer, CR stands for controlled release, OF stands for organic fertilizer, IN stands for inhibitors
-  dt[, nsourcegroup := fifelse((grepl('\\+',n_source) & grepl('^U|urea|CAN|AA|UAN|mineral|Synthetic|ammonium|Ammonium|DAP',n_source) & grepl('DMPP|DCD|NI|NBPT|SuperU',n_source) & grepl('slurry|stover|Organic|organic',n_source)),'MF+IN+OF', n_source)]
-  dt[, nsourcegroup := fifelse((grepl('\\+',nsourcegroup) & grepl('^U|urea|CAN|AA|UAN|mineral|Synthetic|ammonium|^Ammonium|DAP',nsourcegroup) & grepl('DMPP|DCD|NI|NBPT|SuperU',nsourcegroup) & grepl('PCU|SCU|resin|PSCU|ESN|POCU|CU|slow release|^polymer',nsourcegroup)),'MF+IN+CR', nsourcegroup)]
-  dt[, nsourcegroup := fifelse((grepl('\\+',nsourcegroup) & grepl('^U|urea|CAN|AA|UAN|mineral|Synthetic|ammonium|^Ammonium|DAP',nsourcegroup) & grepl('PCU|SCU|resin|PSCU|ESN|POCU|CU|slow release|^polymer',nsourcegroup)), 'MF+CR', nsourcegroup)]
-  dt[, nsourcegroup := fifelse((grepl('\\+',nsourcegroup) & grepl('^U|urea|CAN|AA|UAN|mineral|Synthetic|ammonium|^Ammonium|DAP',nsourcegroup) & grepl('slurry|stover|Organic|organic',nsourcegroup)), 'MF+OF', nsourcegroup)]
-  dt[, nsourcegroup := fifelse((grepl('\\+',nsourcegroup) & grepl('^U|urea|CAN|AA|UAN|mineral|Synthetic|ammonium|^Ammonium|DAP',nsourcegroup) & grepl('DMPP|DCD|NI|NBPT|SuperU',nsourcegroup)), 'MF+IN', nsourcegroup)]
-  dt[, nsourcegroup := fifelse((grepl('\\+',nsourcegroup) & grepl('PCU|SCU|resin|PSCU|ESN|POCU|CU|slow release|^polymer',nsourcegroup) & grepl('slurry|stover|Organic|organic',nsourcegroup)), 'CR+OF', nsourcegroup)]
-  
-  # divide into groups for N source 
-  # MF stands for mineral fertilizer, CR stands for controlled release, OF stands for organic fertilizer, IN stands for inhibitors
-  dt[grepl('^U|urea|CAN|AA|mineral|Synthetic|ammonium|^Ammonium|DAP',nsourcegroup), nsourcegroup := 'MF'] 
-  dt[grepl('PCU|SCU|resin|PSCU|ESN|POCU|CU|slow release|^polymer',nsourcegroup), nsourcegroup := 'CR'] 
-  dt[grepl('slurry|stover|Organic|organic',nsourcegroup),nsourcegroup := 'OF'] 
-  dt[grepl('DMPP|DCD|NI|NBPT|SuperU', nsourcegroup),nsourcegroup := 'IN'] 
-  dt[grepl('unknown|NA|no',nsourcegroup) | is.na(n_source),nsourcegroup := 'unknown']
-  dt[grepl('mix',n_source),nsourcegroup := 'MF+OF']
-  
-  # create new columns for application timing 
-  # if no splits are mentioned, number of splits is 1
-  dt[, n_time_splits := fifelse(is.na(n_time_splits),1,n_time_splits)]
-  
-  # create groups for timing of the first dose (n_timing_1)
-  dt[grepl('PP|at planting', n_timing1),n_timing1_group := 'preplant'] 
-  dt[grepl('PE', n_timing1),n_timing1_group := 'preemergence'] 
-  dt[grepl('V1|V2|V3|V4|V5', n_timing1),n_timing1_group := 'earlyvegetative'] 
-  dt[grepl('V6|V7|V8|V9|V10|V11|Z31', n_timing1),n_timing1_group := 'midvegetative'] 
-  dt[grepl('V12|V13|V14|V15|V16|V17|V18|V19|V20|VT', n_timing1),n_timing1_group := 'latevegetative'] 
-  dt[grepl('R1|R2|R3|R4|R5|R6', n_timing1),n_timing1_group := 'reproductive'] 
-  dt[grepl('unknown|NA', n_timing1) | is.na(n_timing1),n_timing1_group := 'unknown'] 
-  
-  # create groups for timing of the second dose (n_timing_2)
-  dt[grepl('PP', n_timing2),n_timing2_group := 'preplant'] 
-  dt[grepl('PE', n_timing2),n_timing2_group := 'preemergence'] 
-  dt[grepl('V1|V2|V3|V4|V5', n_timing2),n_timing2_group := 'earlyvegetative'] 
-  dt[grepl('V6|V7|V8|V9|V10|V11', n_timing2),n_timing2_group := 'midvegetative'] 
-  dt[grepl('V12|V13|V14|V15|V16|V17|V18|V19|V20|VT', n_timing2),n_timing2_group := 'latevegetative'] 
-  dt[grepl('R1|R2|R3|R4|R5|R6|EF', n_timing2),n_timing2_group := 'reproductive'] 
-  dt[grepl('unknown|NA', n_timing2) | is.na(n_timing2),n_timing2_group := 'unknown'] 
-  
-  # create groups for timing of the third dose (n_timing_3)
-  dt[grepl('PP', n_timing3),n_timing3_group := 'preplant'] 
-  dt[grepl('PE', n_timing3),n_timing3_group := 'preemergence'] 
-  dt[grepl('V1|V2|V3|V4|V5', n_timing3),n_timing3_group := 'earlyvegetative'] 
-  dt[grepl('V6|V7|V8|V9|V10|V11', n_timing3),n_timing3_group := 'midvegetative'] 
-  dt[grepl('V12|V13|V14|V15|V16|V17|V18|V19|V20|VT', n_timing3),n_timing3_group := 'latevegetative']
-  dt[grepl('R1|R2|R3|R4|R5|R6|at silking', n_timing3),n_timing3_group := 'reproductive'] 
-  dt[grepl('unknown|NA', n_timing3)| is.na(n_timing3),n_timing3_group := 'unknown'] 
-  
-  # create columns for placement
-  dt[grepl('injected|sub|deep',n_place),nplacegroup := 'injected'] 
-  dt[grepl('band',n_place),nplacegroup := 'bandsprayed']
-  dt[grepl('broadcast|broadcasted|basal|topdress|surface',n_place),nplacegroup := 'broadcasted'] 
-  dt[grepl('unknown', n_place), nplacegroup := 'unknown'] 
   
 # create groups for soil and climate variables 
  
@@ -239,8 +128,6 @@ rm(list=ls())
   dt[,nplacegroup:=as.factor(nplacegroup)]
   dt[,gtexture:=as.factor(gtexture)]
   
-  # delete rows that have unreadable lat lon (expressed by the fact that xcec is missing or is 0)
-  dt <- dt[!is.na(xcec) | xcec == 0,]
   
 # calculate effect sizes and sampling variances
   

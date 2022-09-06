@@ -87,10 +87,11 @@
   d6[sd_nue==0,sd_nue := NA_real_]
   
   # select the columns to save
-  cols <- c('obs_no','no','studynr','country','x','y','year','n_fert_min','n_fert_man','n_place','n_source','n_time_splits','n_res',
+  cols <- c('obs_no','no','studynr','country','x','y','year','n_fert_min','n_fert_man',
+            'n_place','n_source','n_time_splits','n_res',"n_timing1","n_timing2","n_timing3",
             'nue_value','nrep','sd_nue','n_dose',
             'crop_type','depth','p_dose','k_dose',
-            'som','ph','clay','ntot')
+            'som','ph','clay','ntot','texture')
   
   d6 <- d6[,mget(cols)]
 
@@ -128,6 +129,40 @@
   d6[grepl('bean|pea',crop_type),crop_type := 'nfixing']
   d6[grepl('sun|sesam|cotton|cabbage|tomato|fennel|dill|lentil|mustard|okra|pepper|egg|melon|cucumb|garlic|coriand|blackg|canola|mint|vegeta|celery|lettu|appl|brocc',crop_type),crop_type:='other']
   d6[is.na(crop_type),crop_type := 'unknown']
+  
+  # simplify soil texture & fill empty cells with 'unknown'
+  d6[grepl('sandy-clay-loam|clay-loam|silty-clay-loam|loam',texture),texture := 'loam']
+  d6[grepl('silt-loam|silt',texture),texture := 'silt']
+  d6[grepl('sandy-loam|loamy-sand|sand',texture),texture := 'sand']
+  d6[grepl('clay|sandy-clay|silty-clay',texture),texture := 'clay']
+  d6[, texture := fifelse(is.na(texture), 'unknown', texture)] 
+  
+  # create groups for timing of the first dose (n_timing_1)
+  d6[grepl('PP|at planting', n_timing1),n_timing1 := 'preplant'] 
+  d6[grepl('PE', n_timing1),n_timing1 := 'preemergence'] 
+  d6[grepl('V1|V2|V3|V4|V5', n_timing1),n_timing1 := 'earlyvegetative'] 
+  d6[grepl('V6|V7|V8|V9|V10|V11|Z31', n_timing1),n_timing1 := 'midvegetative'] 
+  d6[grepl('V12|V13|V14|V15|V16|V17|V18|V19|V20|VT', n_timing1),n_timing1 := 'latevegetative'] 
+  d6[grepl('R1|R2|R3|R4|R5|R6', n_timing1),n_timing1 := 'reproductive'] 
+  d6[grepl('unknown|NA', n_timing1) | is.na(n_timing1),n_timing1 := 'unknown'] 
+  
+  # create groups for timing of the first dose (n_timing_1)
+  d6[grepl('PP|at planting', n_timing2),n_timing2 := 'preplant'] 
+  d6[grepl('PE', n_timing2),n_timing2 := 'preemergence'] 
+  d6[grepl('V1|V2|V3|V4|V5', n_timing2),n_timing2 := 'earlyvegetative'] 
+  d6[grepl('V6|V7|V8|V9|V10|V11|Z31', n_timing2),n_timing2 := 'midvegetative'] 
+  d6[grepl('V12|V13|V14|V15|V16|V17|V18|V19|V20|VT', n_timing2),n_timing2 := 'latevegetative'] 
+  d6[grepl('R1|R2|R3|R4|R5|R6', n_timing2),n_timing2 := 'reproductive'] 
+  d6[grepl('unknown|NA', n_timing2) | is.na(n_timing2),n_timing2 := 'unknown'] 
+  
+  # create groups for timing of the first dose (n_timing_3)
+  d6[grepl('PP|at planting', n_timing3),n_timing3 := 'preplant'] 
+  d6[grepl('PE', n_timing3),n_timing3 := 'preemergence'] 
+  d6[grepl('V1|V2|V3|V4|V5', n_timing3),n_timing3 := 'earlyvegetative'] 
+  d6[grepl('V6|V7|V8|V9|V10|V11|Z31', n_timing3),n_timing3 := 'midvegetative'] 
+  d6[grepl('V12|V13|V14|V15|V16|V17|V18|V19|V20|VT', n_timing3),n_timing3 := 'latevegetative'] 
+  d6[grepl('R1|R2|R3|R4|R5|R6', n_timing3),n_timing3 := 'reproductive'] 
+  d6[grepl('unknown|NA', n_timing3) | is.na(n_timing3),n_timing3 := 'unknown'] 
   
   # estimate sd from mean CV of other studies for NUE
   d6[, cv_nue := sd_nue / nue_value]

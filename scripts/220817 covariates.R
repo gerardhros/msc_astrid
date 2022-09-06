@@ -183,7 +183,11 @@ dt[, c(cols) := NULL]
 # remove empty spaces
 dt[dt==''] <- NA
 
+# setnames to lower case
 setnames(dt,tolower(colnames(dt)))
+
+# remove cases where soil properties are zero (incorrect lon-lat?)
+dt <- dt[xcec>0]
 
 # save the file  
 fwrite(dt,'data/220906 all sites with covariates.csv')
