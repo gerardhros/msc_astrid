@@ -135,6 +135,7 @@
   dt.new[grepl('cereal',croptype), nue := 60.46 + 9.205 + 0.5486 - 7.514 * n_timing  - 6.33e-7 * n_dose * n_dose^2 - 2.749]
   dt.new[grepl('nfix',croptype), nue := 60.46 + 9.205 + 0.5486 - 7.514 * n_timing  - 6.33e-7 * n_dose * n_dose^2 - 3.962]
   
+  
   # subset 
   dt.fin <- dt.new[,.(x,y,nue,area = value)]
   
@@ -147,4 +148,81 @@
   
   # write as output
   terra::writeRaster(r.fin,'products/nue_curr.tif', overwrite = TRUE)
+  
+  dt.n2 <- copy(r.dt.melt)
+  dt.n2[, n_place := 'broadcasted']
+  dt.n2[, n_source := 'inorganic']
+  dt.n2[, n_timing := 0]
+  dt.n2[, n_dose := nh4 + no3]
+  dt.n2[, n_time_splits := 0]
+  dt.n2[, xclay := clay]
+  dt.n2[, pre_mean := pre]
+  dt.n2[, tmp_mean := mat]
+  dt.n2[, xsom := soc * 2 / 10]
+  dt.n2[grepl('rice',croptype),crop_type := 'rice']
+  dt.n2[grepl('maiz',croptype),crop_type := 'maize']
+  dt.n2[grepl('rootcrop',croptype),crop_type := 'rootcrops']
+  dt.n2[grepl('cereal',croptype),crop_type := 'wheat']
+  dt.n2[grepl('other',croptype),crop_type := 'other']
+  dt.n2[grepl('nfix',croptype),crop_type := 'nfixing']
+  m1 <- readRDS('products/nue_m1.rds')
+  p1 <- predict(m1,newdata = dt.n2, interval="confidence",se.fit = TRUE)
+  dt.n2[,pred := as.numeric(p1$fit[,1])]
+  dt.n2[,predse := as.numeric(p1$se.fit)]
+  
+  # subset, estimate mean per area, and write as geotiff
+  dt.fin <- dt.n2[,.(x,y,pred,area = value)]
+  dt.fin <- dt.fin[,list(nue = weighted.mean(pred,w = area,na.rm = TRUE)),by = c('x','y')]
+  r.fin <- terra::rast(dt.fin,type='xyz')
+  terra::crs(r.fin) <- 'epsg:4326'
+  terra::writeRaster(r.fin,'products/nue_curr_v2.tif', overwrite = TRUE)
+ 
+  # subset, estimate mean per area, and write as geotiff
+  dt.fin <- dt.n2[,.(x,y,n_dose,area = value)]
+  dt.fin <- dt.fin[,list(n_dose = weighted.mean(n_dose,w = area,na.rm = TRUE)),by = c('x','y')]
+  r.fin <- terra::rast(dt.fin,type='xyz')
+  terra::crs(r.fin) <- 'epsg:4326'
+  terra::writeRaster(r.fin,'products/ndose_v1.tif', overwrite = TRUE)
+  
+  dt.n3 <- copy(r.dt.melt)
+  dt.n3[, n_place := 'injected']
+  dt.n3[, n_source := 'manure']
+  dt.n3[, n_timing := 2]
+  dt.n3[, n_dose := 0.9*(nh4 + no3)]
+  dt.n3[, n_time_splits := 3]
+  dt.n3[, xclay := clay]
+  dt.n3[, pre_mean := pre]
+  dt.n3[, tmp_mean := mat]
+  dt.n3[, xsom := soc * 2 / 10]
+  dt.n3[grepl('rice',croptype),crop_type := 'rice']
+  dt.n3[grepl('maiz',croptype),crop_type := 'maize']
+  dt.n3[grepl('rootcrop',croptype),crop_type := 'maize']
+  dt.n3[grepl('cereal',croptype),crop_type := 'wheat']
+  dt.n3[grepl('other',croptype),crop_type := 'maize']
+  dt.n3[grepl('nfix',croptype),crop_type := 'nfixing']
+  m1 <- readRDS('products/nue_m1.rds')
+  p1 <- predict(m1,newdata = dt.n3, interval="confidence",se.fit = TRUE)
+  dt.n3[,pred := as.numeric(p1$fit[,1])]
+  dt.n3[,predse := as.numeric(p1$se.fit)]
+  
+  # subset, estimate mean per area, and write as geotiff
+  dt.fin <- dt.n3[,.(x,y,pred,area = value)]
+  dt.fin <- dt.fin[,list(nue = weighted.mean(pred,w = area,na.rm = TRUE)),by = c('x','y')]
+  r.fin <- terra::rast(dt.fin,type='xyz')
+  terra::crs(r.fin) <- 'epsg:4326'
+  terra::writeRaster(r.fin,'products/nue_impr_v2.tif', overwrite = TRUE)
+
+  # change due to upgrade
+  dt.n2[,uid := .I]
+  dt.n3[,uid := .I]
+  dt.n4 <- merge(dt.n2[,.(x,y,uid,curr = pred)],
+                 dt.n3[,.(x,y,uid,impr = pred,value)],by=c('uid', 'x','y'))
+  dt.n4[,diff := impr - curr]
+    
+  # subset, estimate mean per area, and write as geotiff
+  dt.fin <- dt.n4[,.(x,y,dnue = diff,area = value)]
+  dt.fin <- dt.fin[,list(dnue = weighted.mean(dnue,w = area,na.rm = TRUE)),by = c('x','y')]
+  r.fin <- terra::rast(dt.fin,type='xyz')
+  terra::crs(r.fin) <- 'epsg:4326'
+  terra::writeRaster(r.fin,'products/nue_diff_v2.tif', overwrite = TRUE)
   

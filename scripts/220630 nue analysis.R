@@ -45,27 +45,29 @@ rm(list=ls())
   dt2[fnue > 150,fvnue := pmin(500,pmin(9 * fnue,fvnue))]
  
   # investigate influence of factors
-  boxplot(dt2$fnue~dt2$n_place,main = 'effect of placement', ylab='NUE (%)',xlab = '')
-  boxplot(dt2$fnue~dt2$n_source,main = 'effect of N source', ylab='NUE (%)',xlab = '')
-  boxplot(dt2$fnue~dt2$n_time_splits,main = 'effect of N timing', ylab='NUE (%)',xlab = '')
-  boxplot(dt2$fnue~dt2$crop_type,main = 'effect of crop type', ylab='NUE (%)',xlab = '')
-  boxplot(dt2$fnue~dt2$texture,main = 'effect of soiltype', ylab='NUE (%)',xlab = '')
-  plot(dt2$fnue~dt2$n_dose,main = 'effect of N dose', ylab='NUE (%)',xlab = '')
-  plot(dt2$fnue~dt2$xclay,main = 'effect of clay content', ylab='NUE (%)',xlab = '')
-  plot(dt2$fnue~dt2$xph,main = 'effect of pH', ylab='NUE (%)',xlab = '')
-  plot(dt2$fnue~dt2$xntot,main = 'effect of total N', ylab='NUE (%)',xlab = '')
-  plot(dt2$fnue~dt2$depntot,main = 'effect of N deposition', ylab='NUE (%)',xlab = '')
-  plot(dt2$fnue~dt2$pre_mean,main = 'effect of precipitation', ylab='NUE (%)',xlab = '')
-  
-  
+  # boxplot(dt2$fnue~dt2$n_place,main = 'effect of placement', ylab='NUE (%)',xlab = '')
+  # boxplot(dt2$fnue~dt2$n_source,main = 'effect of N source', ylab='NUE (%)',xlab = '')
+  # boxplot(dt2$fnue~dt2$n_time_splits,main = 'effect of N timing', ylab='NUE (%)',xlab = '')
+  # boxplot(dt2$fnue~dt2$crop_type,main = 'effect of crop type', ylab='NUE (%)',xlab = '')
+  # boxplot(dt2$fnue~dt2$texture,main = 'effect of soiltype', ylab='NUE (%)',xlab = '')
+  # plot(dt2$fnue~dt2$n_dose,main = 'effect of N dose', ylab='NUE (%)',xlab = '')
+  # plot(dt2$fnue~dt2$xclay,main = 'effect of clay content', ylab='NUE (%)',xlab = '')
+  # plot(dt2$fnue~dt2$xph,main = 'effect of pH', ylab='NUE (%)',xlab = '')
+  # plot(dt2$fnue~dt2$xntot,main = 'effect of total N', ylab='NUE (%)',xlab = '')
+  # plot(dt2$fnue~dt2$depntot,main = 'effect of N deposition', ylab='NUE (%)',xlab = '')
+  # plot(dt2$fnue~dt2$pre_mean,main = 'effect of precipitation', ylab='NUE (%)',xlab = '')
+
   # baseline model
   a = Sys.time()
   mC1=rma.mv(nue_value,nue_var, random= list(~1|studynr),data=dt2, method="ML", sparse = TRUE)
  Sys.time()-1
  
   # test first main glm models
-  m1 = lm(fnue ~ n_place + n_source + n_time_splits + crop_type + n_dose : I(n_dose^2) + xclay*pre_mean + xsom*tmp_mean, data = dt2)
+  m1 = lm(fnue ~ n_place + n_source + n_time_splits + crop_type + n_dose : I(n_dose^2) + 
+            xclay*pre_mean + xsom*tmp_mean, data = dt2)
  
+  saveRDS(m1,'products/nue_m1.rds')
+  
   p1 <- predict(m1,newdata = dt2)
   plot(p1,dt2$fnue)
   
