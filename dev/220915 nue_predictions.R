@@ -49,12 +49,13 @@ require(metafor);require(data.table);require(ggplot2)
   # visualise the predictions for nue_e1_all 
   plot_nue_ndose <- ggplot(data=nue_e0_ndose,aes(x=(ndose),y=nue)) +
                            geom_point(color='blue') + geom_line(show.legend=FALSE, color='blue') + theme_bw() +
+                           geom_ribbon(aes(ymin = cil, ymax = ciu), fill = "grey",alpha=0.3, linetype="dotted") +
                            xlab("N dose (kg/ha)") + ylab("NUE (%)") +
                            theme(legend.title = element_text(size=10),
                                  legend.position = c(0.10,.15), 
                                  axis.text.x = element_text(color="black", size = 11), 
                                  axis.text.y = element_text(color="black", size = 11),
-                                 axis.title = element_text(color="black", size = 15)) + ylim(0,101)
+                                 axis.title = element_text(color="black", size = 15)) + ylim(-20,120)
                            
   # save plot
   #ggsave(plot = plot_nue_ndose, filename = 'products/nue_ndose.jpg')
@@ -252,14 +253,15 @@ require(metafor);require(data.table);require(ggplot2)
    # visualise the predictions for nue_e1_all 
    plot_nue_clay <- ggplot(data=nue_e2_clay,aes(x=(xclay),y=nue)) +
                       geom_point(color='blue') + geom_line(show.legend=FALSE, color='blue') + theme_bw() +
+                      geom_ribbon(aes(ymin = cil, ymax = ciu), fill = "grey",alpha=0.3, linetype="dotted") +
                       xlab("Clay (%)") + ylab("NUE (%)") +
                       theme(legend.title = element_text(size=10),
                             legend.position = c(0.10,.15), 
                             axis.text.x = element_text(color="black", size = 11), 
                             axis.text.y = element_text(color="black", size = 11),
-                            axis.title = element_text(color="black", size = 15)) + ylim(0,100)
+                            axis.title = element_text(color="black", size = 15)) + ylim(-20,120)
    # save plot
-   #ggsave(plot = plot_nue_clay, filename = 'products/nue_clay.jpg')
+   ggsave(plot = plot_nue_clay, filename = 'products/nue_clay.jpg')
    
   
  # predict NUE under varying som content
@@ -301,6 +303,7 @@ require(metafor);require(data.table);require(ggplot2)
    # visualise the predictions for nue_e1_all 
    plot_nue_som <- ggplot(data=nue_e3_som,aes(x=(xsom),y=nue)) +
                              geom_point(color='blue') + geom_line(show.legend=FALSE, color='blue') + theme_bw() +
+                             geom_ribbon(aes(ymin = cil, ymax = ciu), fill = "grey",alpha=0.3, linetype="dotted") +
                              xlab("SOM (g/kg)") + ylab("NUE (%)") +
                              theme(legend.title = element_text(size=10),
                                    legend.position = c(0.10,.15), 
@@ -353,12 +356,13 @@ require(metafor);require(data.table);require(ggplot2)
    # visualise the predictions for nue_e1_all 
    plot_nue_temp <- ggplot(data=nue_e4_temp,aes(x=(tmp),y=nue)) +
                             geom_point(color='blue') + geom_line(show.legend=FALSE, color='blue') + theme_bw() +
+                            geom_ribbon(aes(ymin = cil, ymax = ciu), fill = "grey",alpha=0.3, linetype="dotted") +
                             xlab("Mean temperature (*C)") + ylab("NUE (%)") +
                             theme(legend.title = element_text(size=10),
                                   legend.position = c(0.10,.15), 
                                   axis.text.x = element_text(color="black", size = 11), 
                                   axis.text.y = element_text(color="black", size = 11),
-                                  axis.title = element_text(color="black", size = 15)) + ylim(0,100)
+                                  axis.title = element_text(color="black", size = 15)) + ylim(-10,100)
                           
    # save plot
    #ggsave(plot = plot_nue_temp, filename = 'products/nue_temp.jpg') 
@@ -403,12 +407,13 @@ require(metafor);require(data.table);require(ggplot2)
    # visualise the predictions for nue_e1_all 
    plot_nue_prec <- ggplot(data=nue_e5_prec,aes(x=(pre),y=nue)) +
                              geom_point(color='blue') + geom_line(show.legend=FALSE, color='blue') + theme_bw() +
+                             geom_ribbon(aes(ymin = cil, ymax = ciu), fill = "grey",alpha=0.3, linetype="dotted") +
                              xlab("Mean precipitation (mm/y)") + ylab("NUE (%)") +
                              theme(legend.title = element_text(size=10),
                                    legend.position = c(0.10,.15), 
                                    axis.text.x = element_text(color="black", size = 11), 
                                    axis.text.y = element_text(color="black", size = 11),
-                                   axis.title = element_text(color="black", size = 15)) + ylim(0,100)
+                                   axis.title = element_text(color="black", size = 15)) + ylim(-25,120)
                            
    # save plot
    #ggsave(plot = plot_nue_prec, filename = 'products/nue_prec.jpg') 
