@@ -58,27 +58,57 @@ rm(list=ls())
   # plot(dt2$fnue~dt2$pre_mean,main = 'effect of precipitation', ylab='NUE (%)',xlab = '')
 
   # baseline model
-  a = Sys.time()
-  mC1=rma.mv(nue_value,nue_var, random= list(~1|studynr),data=dt2, method="ML", sparse = TRUE)
- Sys.time()-1
- 
-  # test first main glm models
-  m1 = lm(fnue ~ n_place + n_source + n_time_splits + crop_type + n_dose : I(n_dose^2) + 
-            xclay*pre_mean + xsom*tmp_mean, data = dt2)
- 
-  saveRDS(m1,'products/nue_m1.rds')
+  # a = Sys.time()
+  # mC1=rma.mv(nue_value,nue_var, random= list(~1|studynr),data=dt2, method="ML", sparse = TRUE)
+  # Sys.time()-1
+  # 
+  # # test first main glm models
+  # m1 = lm(fnue ~ n_place + n_source + n_time_splits + crop_type + n_dose : I(n_dose^2) + 
+  #           xclay*pre_mean + xsom*tmp_mean, data = dt2)
+  # 
+  # saveRDS(m1,'products/nue_m1.rds')
+  # 
+  # p1 <- predict(m1,newdata = dt2)
+  # plot(p1,dt2$fnue)
   
-  p1 <- predict(m1,newdata = dt2)
-  plot(p1,dt2$fnue)
   
   # model with moderators
-  modelA1 = rma.mv(fnue,fvnue,mods=~n_place + n_source + n_time_splits + crop_type + n_dose + I(n_dose^2) + p_dose + k_dose + 
+  meta1 = rma.mv(fnue,fvnue,mods=~n_place + n_source + n_time_splits + crop_type + n_dose + I(n_dose^2) + p_dose + k_dose + 
                      tmp_mean + pre_mean + pot_eva + depntot + xntot + xclay + bd,random=~1| no,data=dt2, method="ML", sparse = TRUE)
+  saveRDS(meta1,'products/nue_meta1.rds')
+  p2 <- predict(meta1,newdata = dt2)
+
+
+  # metafor model with selection of covariates
+  meta2 = rma.mv(fnue,fvnue,mods = ~ xclay + xsom + tmp_mean + pre_mean + factor(n_source)*n_dose + I(n_dose^2),random=~1| no,data=dt2,method="ML", sparse = TRUE)
+        
+        # Warning message:
+        # Ratio of largest to smallest sampling variance extremely large. May not be able to obtain stable results.
   
-  # check whether model A1 is a better fit than model C1
-  anova(modelC1, modelA1)
-  # percentage variance explained:
-  evp_A1 = 100*(1-modelA1$QE/modelC1$QE)  
+        # check sampling variances   
+        check_var <-  dt2[,check_var:= max(fvnue)/min(fvnue)]
+        check_var1 <- check_var[check_var >= 1e7,]  
+        
+  saveRDS(meta2,'products/nue_meta2.rds')
+  
+  # metafor model with selection of covariates
+  meta3 = rma.mv(fnue,fvnue,mods = ~ xclay + xsom + tmp_mean + pre_mean + factor(n_place)*n_dose + I(n_dose^2),random=~1| no,data=dt2,method="ML", sparse = TRUE)
+  saveRDS(meta3,'products/nue_meta3.rds')
+ 
+   # metafor model with selection of covariates
+  meta4 = rma.mv(fnue,fvnue,mods = ~ xclay + xsom + tmp_mean + pre_mean + factor(n_time_splits)*n_dose + I(n_dose^2),random=~1| no,data=dt2,method="ML", sparse = TRUE)
+  saveRDS(meta4,'products/nue_meta4.rds')
+  
+  
+  
+
+  
+  
+  
+  
+  
+  
+  
   
   
   
@@ -352,5 +382,6 @@ rm(list=ls())
   # qqnorm(rstandard.rma.mv(modelE1))
   qqnorm(residuals.rma(modelE1), main= "(b) NUEenv")
   qqline(residuals.rma(modelE1)) 
+  
   
   
