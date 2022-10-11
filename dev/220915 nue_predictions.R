@@ -206,7 +206,7 @@ require(metafor);require(data.table);require(ggplot2)
                      scale_color_manual(values=c('chartreuse3','deepskyblue','orange','darkolivegreen','blue')) +
                      xlab("N dose (kg/ha)") + ylab("NUE (%)") +
                      theme(legend.title = element_text(size=10),
-                           legend.position = c(0.10,.15), 
+                           legend.position = c(0.10,.25), 
                            axis.text.x = element_text(color="black", size = 11), 
                            axis.text.y = element_text(color="black", size = 11),
                            axis.title = element_text(color="black", size = 15)) + ylim(0,120)
