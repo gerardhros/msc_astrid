@@ -4,9 +4,12 @@ library(stringr);library(foreign);library(mapview);
 
 # load data
 d1 <- fread("dev/220905 all sites without covariates.csv")
+d1 <- fread('data/221019 world loc predictions.csv')
 
 # assign unique ID to each row
 d1[, ID := .GRP,by=c('studynr','x','y')]
+# assign unique ID to second d1
+d1[,ID := .I]
 
 # remove observations without X Y data from d1
 d2 <- unique(d1[,.(ID,x,y)])
@@ -26,17 +29,19 @@ s2 <- foreign::read.dbf('D:/DATA/03 metzger/GenS_v3.dbf')
 # read in the rasters via hard drive
 r1 <- list.files('D:/DATA/01 soil',pattern = 'tif|nc',full.names = T)
 r1 <- r1[!grepl('stack',r1)]
+r1<- r1[grepl('soc|clay',r1)]
 r2 <- list.files('D:/DATA/02 climate',pattern = 'tif|nc',full.names = T)
 r3 <- list.files('D:/DATA/03 metzger',pattern = 'tif|nc',full.names = T)
 r4 <- list.files('D:/DATA/09 depositie',pattern = 'tif|nc',full.names = T)
+r4<- r4[!grepl('FASST',r4)]
 
 # read in the raster files and convert to spatrasters
-isric <- sds(r1)
-climate <- sds(r2)
-metzger <- rast(r3)
-isric <- rast(isric)
-climate <- rast(climate)
-ndep <- rast(r4)
+isric <- terra::sds(r1)
+climate <- terra::sds(r2)
+metzger <- terra::rast(r3)
+isric <- terra::rast(isric)
+climate <- terra::rast(climate)
+ndep <- terra::rast(r4)
 
 # --- extract isric data ----
 
@@ -80,7 +85,7 @@ c1.isric[value < 1 & or < 1 & e3 > 1,value := e3]
 c1.isric[value < 1 & or < 1 & e4 > 1,value := e4]
 
 c2.isric <- dcast(c1.isric,ID~variable, value.var = 'value')
-
+saveRDS(c2.isric,'dev/tmp_isric_globe.rds')
 
 # --- extract climate data ----
 
@@ -105,14 +110,15 @@ d2.climate[, month :=  stringr::str_extract_all(variable,"(?<=[a-z]{3}_)\\d+",si
 d3.climate <- dcast(d2.climate,ID+years+month~cvar,value.var = 'value')
 
 # derive the mean and SD per gridcel over period 1991-2019
-c1.climate <- d3.climate[,list(pre_mean = mean(pre),
-                               pre_sd = sd(pre),
-                               tmp_mean = mean(tmp),
-                               tmp_sd = sd(tmp),
-                               pet_mean = mean(pet),
-                               pet_sd = sd(pet)
+c1.climate <- d3.climate[,list(pre_mean = mean(pre,na.rm=T),
+                               pre_sd = sd(pre,na.rm=T),
+                               tmp_mean = mean(tmp,na.rm=T),
+                               tmp_sd = sd(tmp,na.rm=T),
+                               pet_mean = mean(pet,na.rm=T),
+                               pet_sd = sd(pet,na.rm=T)
 ),by='ID']
 c2.climate <- copy(c1.climate)
+saveRDS(c2.climate,'dev/tmp_climate_globe.rds')
 
 # --- extract metzger data
 
@@ -191,6 +197,6 @@ dt <- dt[xcec>0]
 
 # save the file  
 fwrite(dt,'data/220906 all sites with covariates.csv')
-
+fwrite(dt,'data/221019 global covariates.csv')
 
 

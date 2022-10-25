@@ -99,11 +99,21 @@ rm(list=ls())
   meta4 = rma.mv(fnue,fvnue,mods = ~ xclay + xsom + tmp_mean + pre_mean + factor(n_time_splits)*n_dose + I(n_dose^2),random=~1| no,data=dt2,method="ML", sparse = TRUE)
   saveRDS(meta4,'products/nue_meta4.rds')
   
-  
+  # ----------------------------
+
+  # make plots  
+  require(sf)
+  s1 <- unique(dt2[,.(x,y,id=1)])
   
 
+  mp.sf <- sf::st_as_sf(s1,coords = c('x','y'),crs = 4326)
+
+  mapview::mapview(mp.sf)
+  sf::st_write(mp.sf,'D:/ESA/03 msc projects/01 astrid/02 data/mp.gpkg')
+
+  dt2[,.N,by='country']
   
-  
+  dt2[,.N]
   
   
   
